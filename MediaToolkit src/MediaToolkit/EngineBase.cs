@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Threading;
-using MediaToolkit.Properties;
 using MediaToolkit.Util;
 
 namespace MediaToolkit
@@ -17,8 +15,7 @@ namespace MediaToolkit
         /// <summary>   Used for locking the FFmpeg process to one thread. </summary>
         private const string LockName = "MediaToolkit.Engine.LockName";
 
-        private const string DefaultFFmpegFileWindowsPath = @"/MediaToolkit/ffmpeg.exe";
-        private const string DefaultFFmpegFileLinuxPath = @"ffmpeg";
+        private const string DefaultFFmpegFilePath = @"ffmpeg";
 
         /// <summary>   Full pathname of the FFmpeg file. </summary>
         protected readonly string FFmpegFilePath;
@@ -29,11 +26,11 @@ namespace MediaToolkit
         /// <summary>   The ffmpeg process. </summary>
         protected Process FFmpegProcess;
 
-
         protected EngineBase()
-            : this(ConfigurationManager.AppSettings["mediaToolkit.ffmpeg.path"])
+            : this(null)
         {
         }
+
 
         /// -------------------------------------------------------------------------------------------------
         /// <summary>
@@ -45,17 +42,14 @@ namespace MediaToolkit
             Mutex = new Mutex(false, LockName);
             _isDisposed = false;
 
-            var isWindows = IsWindows();
-
             if (ffMpegPath.IsNullOrWhiteSpace())
-                ffMpegPath = isWindows ? DefaultFFmpegFileWindowsPath : DefaultFFmpegFileLinuxPath;
+                ffMpegPath = DefaultFFmpegFilePath;
 
             FFmpegFilePath = ffMpegPath;
 
-            if (!isWindows) return;
-
-            EnsureDirectoryExists();
-            EnsureFFmpegFileExists();
+            //EnsureDirectoryExists();
+            //EnsureFFmpegFileExists();
+            EnsureFFmpegIsNotUsed();
         }
 
         private bool IsWindows()
@@ -73,7 +67,24 @@ namespace MediaToolkit
                     return false;
             }
         }
- 
+        private void EnsureFFmpegIsNotUsed()
+        {
+            try
+            {
+                this.Mutex.WaitOne();
+                Process.GetProcessesByName(Resources.FFmpegProcessName)
+                       .ForEach(process =>
+                       {
+                           process.Kill();
+                           process.WaitForExit();
+                       });
+            }
+            finally
+            {
+                this.Mutex.ReleaseMutex();
+            }
+        }
+
         private void EnsureDirectoryExists()
         {
             var directory = Path.GetDirectoryName(FFmpegFilePath) ?? Directory.GetCurrentDirectory();
